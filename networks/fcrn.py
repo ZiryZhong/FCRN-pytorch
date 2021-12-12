@@ -11,11 +11,10 @@ class base_fcrn(nn.Module):
         self.resnet = base_resnet(backbone, backbone_pth)
         self.conv1 = nn.Conv2d(2048,1024,(1,1))
         self.fast_up_1 = base_upprojection(1024, 512).cuda(torch.device(0))
-        self.fast_up_2 = base_upprojection(512, 256).cuda()
-        self.fast_up_3 = base_upprojection(256, 128).cuda()
-        self.fast_up_4 = base_upprojection(128, 64).cuda()
+        self.fast_up_2 = base_upprojection(512, 256).cuda(torch.device(0))
+        self.fast_up_3 = base_upprojection(256, 128).cuda(torch.device(0))
+        self.fast_up_4 = base_upprojection(128, 64).cuda(torch.device(0))
         self.relu = nn.ReLU(inplace=False)
-        self.relu_1 = nn.ReLU(inplace=False)
         self.conv2 = nn.Conv2d(64,1,(3,3),stride=(1,1),padding=(1,1)) # TODO:这边的大小要修正一下
         self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
 
@@ -97,7 +96,6 @@ class base_upprojection(nn.Module):
         out3 = torch.cat([out3, concat_w],dim=3)
 
         concat_h_special = torch.zeros(b, c, 1, w-1).cuda(torch.device(0))
-        #concat_w_special = torch.zeros(b, c, h, 1).cuda(torch.device(0))
 
         out4 = self.conv4(x)
         out4 = torch.cat([out4, concat_h_special],dim=2)
@@ -122,53 +120,53 @@ class base_upprojection(nn.Module):
 
         out = torch.zeros(b, c, h*scale, w*scale).cuda(torch.device(0))
 
-        if self.inter_leaving_flag:
+        # if self.inter_leaving_flag:
+        #
+        #     out[:, :, torch.tensor(self.il_rows[0], dtype=torch.long).cuda(torch.device(0)),
+        #               torch.tensor(self.il_cols[0], dtype=torch.long).cuda(torch.device(0))] = x[0].view(b, c, -1)
+        #
+        #     out[:, :, torch.tensor(self.il_rows[0], dtype=torch.long).cuda(torch.device(0)),
+        #               torch.tensor(self.il_cols[1], dtype=torch.long).cuda(torch.device(0))] = x[1].view(b, c, -1)
+        #
+        #     out[:, :, torch.tensor(self.il_rows[1], dtype=torch.long).cuda(torch.device(0)),
+        #               torch.tensor(self.il_cols[0], dtype=torch.long).cuda(torch.device(0))] = x[2].view(b, c, -1)
+        #
+        #     out[:, :, torch.tensor(self.il_rows[1], dtype=torch.long).cuda(torch.device(0)),
+        #               torch.tensor(self.il_cols[1], dtype=torch.long).cuda(torch.device(0))] = x[3].view(b, c, -1)
 
-            out[:, :, torch.tensor(self.il_rows[0], dtype=torch.long).cuda(torch.device(0)),
-                      torch.tensor(self.il_cols[0], dtype=torch.long).cuda(torch.device(0))] = x[0].view(b, c, -1)
+        # else:
+        list_col = torch.linspace(0, int(w * scale ) - 2, int(w * scale / 2)).view(1,-1)
+        list_row = torch.linspace(0, int(h * scale ) - 2, int(h * scale / 2)).view(1,-1)
+        tmp_mat_col = torch.zeros(int(h * scale / 2) ,int(w * scale / 2))
+        tmp_mat_col = tmp_mat_col.copy_(list_col)
 
-            out[:, :, torch.tensor(self.il_rows[0], dtype=torch.long).cuda(torch.device(0)),
-                      torch.tensor(self.il_cols[1], dtype=torch.long).cuda(torch.device(0))] = x[1].view(b, c, -1)
+        tmp_mat_row = torch.zeros(int(w * scale / 2), int(h * scale / 2))
+        tmp_mat_row = tmp_mat_row.copy_(list_row)
 
-            out[:, :, torch.tensor(self.il_rows[1], dtype=torch.long).cuda(torch.device(0)),
-                      torch.tensor(self.il_cols[0], dtype=torch.long).cuda(torch.device(0))] = x[2].view(b, c, -1)
+        col = tmp_mat_col.view(-1)
+        tmp_m_r = tmp_mat_row.T
+        tmp_m = tmp_m_r.contiguous()
+        row = tmp_m.view(-1)[0:]
 
-            out[:, :, torch.tensor(self.il_rows[1], dtype=torch.long).cuda(torch.device(0)),
-                      torch.tensor(self.il_cols[1], dtype=torch.long).cuda(torch.device(0))] = x[3].view(b, c, -1)
+        # self.il_rows.append(row)
+        # self.il_rows.append(row+1)
+        # self.il_cols.append(col)
+        # self.il_cols.append(col+1)
+        row = row.detach().numpy()\
+            #.cuda(torch.device(0))
+        col = col.detach().numpy()\
+            #.cuda(torch.device(0))
 
-        else:
+        #TODO: 这边在做内插的时候有个bug 是分片操作时候的失误 导致输出的图片成块状 待解决
+        #TODO: 考虑提前生成这些索引矩阵 提高速度
+        out[:,:,row,col] = x[0].view(b,c,-1)
 
-            list_col = torch.linspace(0, int(w * scale / 2) - 1, int(w * scale / 2)).view(1,-1)
-            list_row = torch.linspace(0, int(h * scale / 2) - 1, int(h * scale / 2)).view(1,-1)
+        out[:,:,row,col+1] = x[1].view(b,c,-1)
 
-            tmp_mat_col = torch.zeros(int(h * scale / 2) ,int(w * scale / 2))
-            tmp_mat_col = tmp_mat_col.copy_(list_col)
+        out[:,:,row+1,col] = x[2].view(b,c,-1)
 
-            tmp_mat_row = torch.zeros(int(w * scale / 2), int(h * scale / 2))
-            tmp_mat_row = tmp_mat_row.copy_(list_row)
+        out[:,:,row+1,col+1] = x[3].view(b,c,-1)
 
-            col = tmp_mat_col.view(-1)
-            tmp_m_r = tmp_mat_row.T
-            tmp_m = tmp_m_r.contiguous()
-            row = tmp_m.view(-1)[0:]
-
-            self.il_rows.append(row)
-            self.il_rows.append(row+1)
-            self.il_cols.append(col)
-            self.il_cols.append(col+1)
-
-            out[:,:,torch.as_tensor(self.il_rows[0],dtype=torch.long).cuda(torch.device(0)),
-                    torch.as_tensor(self.il_cols[0],dtype=torch.long).cuda(torch.device(0))] = x[0].view(b,c,-1)
-
-            out[:,:,torch.as_tensor(self.il_rows[0],dtype=torch.long).cuda(torch.device(0)),
-                    torch.as_tensor(self.il_cols[1],dtype=torch.long).cuda(torch.device(0))] = x[1].view(b,c,-1)
-
-            out[:,:,torch.as_tensor(self.il_rows[1],dtype=torch.long).cuda(torch.device(0)),
-                    torch.as_tensor(self.il_cols[0],dtype=torch.long).cuda(torch.device(0))] = x[2].view(b,c,-1)
-
-            out[:,:,torch.as_tensor(self.il_rows[1],dtype=torch.long).cuda(torch.device(0)),
-                    torch.as_tensor(self.il_cols[1],dtype=torch.long).cuda(torch.device(0))] = x[3].view(b,c,-1)
-
-            self.inter_leaving_flag = True
+        self.inter_leaving_flag = True
 
         return out

@@ -7,7 +7,7 @@ from data_process.dataset import FcrnDataSet, Fcrn_Dataset_Collate
 from utils.loss_func import Berhu_Loss
 from torch.utils.data import DataLoader
 from utils.fit_epoch import fit_one_epoch
-
+import os
 
 # 超参数
 batch_size = 8
@@ -23,6 +23,12 @@ val_rate = 0.1
 
 
 if __name__ == '__main__':
+
+    print(torch.cuda.is_available())  # 是否有可用的gpu
+    print(torch.cuda.device_count())  # 有几个可用的gpu
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # 声明gpu
+    dev = torch.device('cuda:0')  # 调用哪个gpu
+    torch.cuda.empty_cache()
 
     # 初始化模型
     backbone_type = "resnet50" # 以resnet50作为特征提取的骨架
@@ -42,7 +48,7 @@ if __name__ == '__main__':
     net = model.train()
     net = torch.nn.DataParallel(model)  # 多GPU的时候并行处理
     cudnn.benchmark = True  # 提高运行效率 找到最高效的运行方式 （但有条件）
-    net = net.cuda()
+    net = net.cuda(dev)
 
     # 划分数据集
     with open(data_path) as f:
@@ -74,6 +80,7 @@ if __name__ == '__main__':
         dpm_set.append(l.split(" ")[1])
 
     print(num_train)
+    print(img_set[0])
     train_dataset = FcrnDataSet(img_set[:400], dpm_set[:400])
     val_dataset = FcrnDataSet(img_set[400:480], dpm_set[400:480])
     gen = DataLoader(train_dataset, batch_size=batch_size, num_workers=1, pin_memory=True,

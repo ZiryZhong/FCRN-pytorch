@@ -12,7 +12,9 @@ def Berhu_Loss(pred, ground_truth):
     #print(pred.shape)
     #print(ground_truth.shape)
     error = abs(pred - ground_truth).view(b,h,w)
-
+    #print(ground_truth)
+    #print(pred)
+    #print(error)
     num_of_batch = pred.shape[0] # batch 大小
     c = 0.2 * torch.max(error).sum() / num_of_batch
     #print(c.shape)
